@@ -9,7 +9,8 @@ mvn test                                          # Run all tests
 mvn test -Dcucumber.filter.tags=@login-success    # Run a single scenario by tag
 mvn test -Dcucumber.filter.tags=@inventory        # Run all scenarios in a feature
 mvn test -Dheadless=false                         # Run with visible browser
-mvn test -Dbrowser=firefox                        # Run with Firefox (must install: see below)
+mvn test -Dbrowser=firefox                        # Run with Firefox
+mvn test -Dbrowser=webkit                         # Run with WebKit
 ```
 
 ## Playwright Browser Installation
@@ -27,42 +28,22 @@ This is a Cucumber BDD test automation project for the [SauceLabs demo app](http
 
 ### Key Design Patterns
 
-**Java Page Object Model** — Page objects live in `src/test/java/pages/` as Java classes. Each extends `BasePage` and exposes Playwright `Locator` instances for UI elements and action methods for common workflows.
+**Java Page Object Model** — Page objects in `src/test/java/pages/` extend `BasePage` and expose Playwright `Locator` fields and action methods.
 
-**PicoContainer Dependency Injection** — `ScenarioContext` is a simple POJO that holds the Playwright `Page` and `BrowserContext` for the current scenario. PicoContainer automatically creates one instance per scenario and injects it into all step definition and hook constructors.
+**PicoContainer Dependency Injection** — `ScenarioContext` is a POJO holding the Playwright `Page` and `BrowserContext` for the current scenario. PicoContainer automatically creates one instance per scenario and injects it into all step definition and hook constructors — no manual wiring needed.
 
 **Playwright Lifecycle** — Managed in `hooks/Hooks.java`:
-- `@BeforeAll`: Creates `Playwright` instance and `Browser` (once per suite)
-- `@Before`: Creates a new `BrowserContext` and `Page` per scenario (full isolation)
-- `@After`: Takes screenshot on failure, then closes `BrowserContext`
+- `@BeforeAll`: Creates a single `Playwright` instance and `Browser` for the entire suite (static fields)
+- `@Before`: Creates a fresh `BrowserContext` and `Page` per scenario (full isolation)
+- `@After`: On failure, captures a full-page screenshot embedded into the Cucumber HTML report; then closes `BrowserContext`
 - `@AfterAll`: Closes `Browser` and `Playwright`
 
+> **Note:** Parallel execution is disabled (`cucumber.execution.parallel.enabled=false` in `junit-platform.properties`). Enabling it requires making the static `Browser` in `Hooks.java` thread-safe (e.g., a `ThreadLocal` browser per worker).
+
 **Configuration via System Properties:**
-- `browser` (default: `chromium`) — chromium, firefox, or webkit
+- `browser` (default: `chromium`) — `chromium`, `firefox`, or `webkit`
 - `headless` (default: `true`) — set to `false` for visible browser
 - `baseUrl` (default: `https://www.saucedemo.com/`) — base URL for the app under test
-
-### Project Layout
-
-```
-src/test/java/
-  context/ScenarioContext.java       # PicoContainer-managed shared state (Page, BrowserContext)
-  hooks/Hooks.java                   # Playwright lifecycle (@BeforeAll/@AfterAll + @Before/@After)
-  pages/BasePage.java                # Abstract base with navigateTo()
-  pages/LoginPage.java               # Login page locators and actions
-  pages/InventoryPage.java           # Product/inventory page locators and actions
-  steps/LoginSteps.java              # Login feature step definitions
-  steps/InventorySteps.java          # Inventory feature step definitions
-  runner/TestRunner.java             # JUnit 5 @Suite runner (cucumber-junit-platform-engine)
-src/test/resources/
-  features/01_login.feature          # Login scenarios (success + locked-out)
-  features/02_inventory.feature      # Product sorting (Scenario Outline with Examples)
-  junit-platform.properties          # Cucumber config
-```
-
-### Runner
-
-`TestRunner.java` uses the JUnit 5 Platform Suite engine (`@Suite` + `@IncludeEngines("cucumber")`). Tag filtering is passed as a system property: `-Dcucumber.filter.tags=@tagName`.
 
 ### Scenario Tagging Convention
 
@@ -79,5 +60,5 @@ Scenario-level tags: `@login-success`, `@login-locked`, `@sort`, `@product-name`
 
 ### Test Reports
 
-- HTML: `target/cucumber-reports/report.html`
+- HTML (with embedded failure screenshots): `target/cucumber-reports/report.html`
 - JSON: `target/cucumber.json`
